@@ -24,17 +24,26 @@ describe("embed", () => {
       {
         name: "icon",
         allowInline: true,
-        setup: (name: string): string => `<i class="icon icon-${name}"></i>`,
+        setup: (name: string, isInline: boolean): string =>
+          isInline
+            ? `<i class="icon inline icon-${name}"></i>`
+            : `<i class="icon block icon-${name}"></i>`,
       },
       {
         name: "badge",
         allowInline: true,
-        setup: (text: string): string => `<span class="badge">${text}</span>`,
+        setup: (text: string, isInline: boolean): string =>
+          isInline
+            ? `<span class="badge inline">${text}</span>`
+            : `<span class="badge block">${text}</span>`,
       },
       {
         name: "warning",
         allowInline: true,
-        setup: (): string => `<span class="icon-warning"></span>`,
+        setup: (param: string, isInline: boolean): string =>
+          isInline
+            ? `<span class="icon-warning inline"></span>`
+            : `<span class="icon-warning block"></span>`,
       },
     ],
   });
@@ -52,7 +61,7 @@ describe("embed", () => {
           "{%youtube dQw4w9WgXcQ%}",
           ['src="https://www.youtube.com/embed/dQw4w9WgXcQ"'],
         ],
-        ["{%warning%}", ['<span class="icon-warning"></span>']],
+        ["{%warning%}", ['<span class="icon-warning block"></span>']],
         ["{% unknown some-param %}", ["{% unknown some-param %}"]],
         ["{ youtube dQw4w9WgXcQ }", ["{ youtube dQw4w9WgXcQ }"]],
       ];
@@ -120,19 +129,22 @@ Some text
       [
         "Click the {% icon home %} button to go home.",
         [
-          '<i class="icon icon-home"></i>',
+          '<i class="icon inline icon-home"></i>',
           "<p>Click the",
           "button to go home.</p>",
         ],
       ],
-      ["{%warning%}", ['<span class="icon-warning"></span>']],
-      ["Status: {% badge active %}", ['<span class="badge">active</span>']],
+      ["{%warning%}", ['<span class="icon-warning inline"></span>']],
+      [
+        "Status: {% badge active %}",
+        ['<span class="badge inline">active</span>'],
+      ],
       [
         "{% icon star %} Rating: {% badge 5 stars %} {% icon thumbs-up %}",
         [
-          '<i class="icon icon-star"></i>',
-          '<span class="badge">5 stars</span>',
-          '<i class="icon icon-thumbs-up"></i>',
+          '<i class="icon inline icon-star"></i>',
+          '<span class="badge inline">5 stars</span>',
+          '<i class="icon inline icon-thumbs-up"></i>',
         ],
       ],
       [
@@ -146,14 +158,14 @@ Some text
       [
         "Click the {% icon {% icon home %} home %} button to go home.",
         [
-          '<i class="icon icon-home"></i>',
+          '<i class="icon inline icon-home"></i>',
           "<p>Click the {% icon",
           "home %} button to go home.</p>",
         ], // find nearest marker
       ],
       [
         "{% icon {% icon home %} home %}",
-        ['<i class="icon icon-home"></i>', "<p>{% icon", "home %}</p>"], // find nearest marker
+        ['<i class="icon inline icon-home"></i>', "<p>{% icon", "home %}</p>"], // find nearest marker
       ],
     ];
 
@@ -172,12 +184,12 @@ Some text
       // Test block usage
       const blockResult = md.render("{% icon star %}");
 
-      expect(blockResult).toContain('<i class="icon icon-star"></i>');
+      expect(blockResult).toContain('<i class="icon block icon-star"></i>');
 
       // Test inline usage
       const inlineResult = md.render("Click {% icon star %} to favorite.");
 
-      expect(inlineResult).toContain('<i class="icon icon-star"></i>');
+      expect(inlineResult).toContain('<i class="icon inline icon-star"></i>');
       expect(inlineResult).toContain("<p>Click");
       expect(inlineResult).toContain("to favorite.</p>");
     });
@@ -198,8 +210,8 @@ Click {% icon play %} to start, or check the {% badge premium %} content.
       expect(result).toContain(
         'src="https://www.youtube.com/embed/dQw4w9WgXcQ"',
       );
-      expect(result).toContain('<i class="icon icon-play"></i>');
-      expect(result).toContain('<span class="badge">premium</span>');
+      expect(result).toContain('<i class="icon inline icon-play"></i>');
+      expect(result).toContain('<span class="badge inline">premium</span>');
       expect(result).toContain("github.com/user/Hello-World");
     });
   });
@@ -342,7 +354,7 @@ Click {% icon play %} to start, or check the {% badge premium %} content.
       ],
       [
         "{% icon %}",
-        ['<i class="icon icon-"></i>'], // Empty parameters (should still work)
+        ['<i class="icon block icon-"></i>'], // Empty parameters (should still work)
       ],
       [
         "{% icon test",
@@ -634,6 +646,150 @@ Continue {% icon middle %} and {% badge final %} end.`;
       );
 
       expect(inlineResult).toContain('<span class="inline">param</span>');
+    });
+  });
+
+  describe("isInline parameter functionality", () => {
+    const mdDifferentStyles = MarkdownIt().use(embed, {
+      config: [
+        {
+          name: "style-aware",
+          allowInline: true,
+          setup: (content: string, isInline: boolean): string => {
+            if (isInline) {
+              return `<span class="inline-style" data-content="${content}">📍 ${content}</span>`;
+            } else {
+              return `<div class="block-style" data-content="${content}"><h3>Block: ${content}</h3></div>`;
+            }
+          },
+        },
+        {
+          name: "block-only",
+          setup: (content: string, isInline: boolean): string => {
+            return `<section class="block-section" data-inline="${isInline}">${content}</section>`;
+          },
+        },
+      ],
+    });
+
+    it("should pass isInline=true for inline embeds", () => {
+      const result = mdDifferentStyles.render(
+        "Text with {% style-aware inline-content %} here.",
+      );
+
+      expect(result).toContain('<span class="inline-style"');
+      expect(result).toContain('data-content="inline-content"');
+      expect(result).toContain("📍 inline-content");
+      expect(result).not.toContain('<div class="block-style"');
+      expect(result).not.toContain("<h3>Block:");
+    });
+
+    it("should pass isInline=false for block embeds", () => {
+      const result = mdDifferentStyles.render(
+        "{% style-aware block-content %}",
+      );
+
+      expect(result).toContain('<div class="block-style"');
+      expect(result).toContain('data-content="block-content"');
+      expect(result).toContain("<h3>Block: block-content</h3>");
+      expect(result).not.toContain('<span class="inline-style"');
+      expect(result).not.toContain("📍");
+    });
+
+    it("should pass isInline=false for block-only embeds", () => {
+      const result = mdDifferentStyles.render("{% block-only test-content %}");
+
+      expect(result).toContain('<section class="block-section"');
+      expect(result).toContain('data-inline="false"');
+      expect(result).toContain("test-content");
+    });
+
+    it("should handle mixed inline and block embeds correctly", () => {
+      const content = `# Title
+
+{% style-aware block-item %}
+
+Here is some text with {% style-aware inline-item %} embedded.
+
+{% block-only another-block %}`;
+
+      const result = mdDifferentStyles.render(content);
+
+      // Block embed
+      expect(result).toContain(
+        '<div class="block-style" data-content="block-item">',
+      );
+      expect(result).toContain("<h3>Block: block-item</h3>");
+
+      // Inline embed
+      expect(result).toContain(
+        '<span class="inline-style" data-content="inline-item">',
+      );
+      expect(result).toContain("📍 inline-item");
+
+      // Block-only embed
+      expect(result).toContain(
+        '<section class="block-section" data-inline="false">',
+      );
+      expect(result).toContain("another-block");
+    });
+
+    it("should maintain backward compatibility when isInline parameter is ignored", () => {
+      const mdBackwardCompatible = MarkdownIt().use(embed, {
+        config: [
+          {
+            name: "legacy",
+            allowInline: true,
+            setup: (content: string): string =>
+              `<span class="legacy">${content}</span>`,
+          },
+        ],
+      });
+
+      const blockResult = mdBackwardCompatible.render(
+        "{% legacy block-test %}",
+      );
+      const inlineResult = mdBackwardCompatible.render(
+        "Text {% legacy inline-test %} more.",
+      );
+
+      expect(blockResult).toContain('<span class="legacy">block-test</span>');
+      expect(inlineResult).toContain('<span class="legacy">inline-test</span>');
+    });
+
+    it("should work with complex parameters and isInline distinction", () => {
+      const mdComplex = MarkdownIt().use(embed, {
+        config: [
+          {
+            name: "video",
+            allowInline: true,
+            setup: (params: string, isInline: boolean): string => {
+              const [id, title = "Video"] = params.split("|");
+
+              if (isInline) {
+                return `<a href="/video/${id}" class="video-link">${title}</a>`;
+              } else {
+                return `<iframe src="/embed/${id}" title="${title}" class="video-player"></iframe>`;
+              }
+            },
+          },
+        ],
+      });
+
+      const blockResult = mdComplex.render("{% video abc123|My Tutorial %}");
+      const inlineResult = mdComplex.render(
+        "Watch {% video abc123|this video %} for details.",
+      );
+
+      // Block should render iframe
+      expect(blockResult).toContain('<iframe src="/embed/abc123"');
+      expect(blockResult).toContain('title="My Tutorial"');
+      expect(blockResult).toContain('class="video-player"');
+
+      // Inline should render link
+      expect(inlineResult).toContain('<a href="/video/abc123"');
+      expect(inlineResult).toContain('class="video-link"');
+      expect(inlineResult).toContain(">this video</a>");
     });
   });
 
